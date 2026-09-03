@@ -1,0 +1,6 @@
+vcpkg_installed
+build/
+test.txt
+vcpkg.json
+.vscode/
+bin/
