@@ -12,6 +12,9 @@
 #include <array>
 #include <cstring>
 #include <string_view>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 constexpr std::array<std::string_view, 6> ignoredFolders{
     "node_modules",
@@ -22,6 +25,8 @@ constexpr std::array<std::string_view, 6> ignoredFolders{
     "__pycache__"
     // also folders starting in .
 };
+
+std::mutex outputMutex;
 
 using Pattern = std::unique_ptr<pcre2_code, decltype(&pcre2_code_free)>;
 
@@ -42,10 +47,12 @@ Pattern compileRegexPattern(char* pattern) {
     return Pattern(re, pcre2_code_free);
 }
 
-void grepFile(const std::filesystem::path& path, const pcre2_code* expression, std::string& buf) {
+void grepFile(const std::filesystem::path& path, const pcre2_code* expression,
+              std::string& buf, std::string& out) {
     std::ifstream file(path, std::ios::binary);
 
     if (!file.is_open()) {
+        std::lock_guard<std::mutex> lock(outputMutex);
         std::cerr << path.string() << ": Failed to open\n";
         return;
     }
@@ -73,6 +80,8 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression, s
     std::unique_ptr<pcre2_match_data, decltype(&pcre2_match_data_free)> matchData(
         pcre2_match_data_create_from_pattern(expression, nullptr), pcre2_match_data_free);
 
+    out.clear();
+
     size_t pos = 0;
     while (pos < got) {
         const char* newline = static_cast<const char*>(std::memchr(buf.data() + pos, '\n', got - pos));
@@ -85,8 +94,8 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression, s
                              length, 0, 0, matchData.get(), nullptr);
 
         if (rc >= 0) {
-            std::cout.write(buf.data() + pos, static_cast<std::streamsize>(length));
-            std::cout.put('\n');
+            out.append(buf.data() + pos, length);
+            out.push_back('\n');
         }
         else if (rc != PCRE2_ERROR_NOMATCH) {
             throw std::runtime_error("Match error: " + std::to_string(rc));
@@ -94,20 +103,16 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression, s
 
         pos = end + 1;
     }
+
+    if (!out.empty()) {
+        std::lock_guard<std::mutex> lock(outputMutex);
+        std::cout.write(out.data(), static_cast<std::streamsize>(out.size()));
+    }
     return;
 }
 
-int main(int argc, char* argv[]) {
-    std::filesystem::path dir = std::filesystem::current_path();
-    dir /= argv[1];
-
-    Pattern expression = compileRegexPattern(argv[2]);
-    std::string buf;
-
-    if (std::filesystem::is_regular_file(dir)) {
-        grepFile(dir, expression.get(), buf);
-        return 0;
-    }
+std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& dir) {
+    std::vector<std::filesystem::path> files;
 
     for (auto it = std::filesystem::recursive_directory_iterator(dir, std::filesystem::directory_options::skip_permission_denied);
         it != std::filesystem::recursive_directory_iterator(); ++it) {
@@ -118,13 +123,64 @@ int main(int argc, char* argv[]) {
             const std::string fileName = entry.path().filename().string();
             if (fileName.starts_with(".") || std::ranges::find(ignoredFolders, fileName) != ignoredFolders.end()) {
                 it.disable_recursion_pending();
-                continue;
             }
+            continue;
         }
 
         if (entry.is_regular_file()) {
-            grepFile(entry, expression.get(), buf);
+            files.push_back(entry.path());
         }
+    }
+
+    return files;
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        std::cerr << "usage: grep <path> <pattern>\n";
+        return 2;
+    }
+
+    std::filesystem::path dir = std::filesystem::current_path();
+    dir /= argv[1];
+
+    Pattern expression = compileRegexPattern(argv[2]);
+
+    if (std::filesystem::is_regular_file(dir)) {
+        std::string buf, out;
+        grepFile(dir, expression.get(), buf, out);
+        return 0;
+    }
+
+    const std::vector<std::filesystem::path> files = collectFiles(dir);
+
+    unsigned threadCount = std::thread::hardware_concurrency();
+    if (threadCount == 0) { threadCount = 4; }
+
+    std::atomic<size_t> nextFile{0};
+    std::vector<std::thread> threads;
+    threads.reserve(threadCount);
+
+    for (unsigned t = 0; t < threadCount; ++t) {
+        threads.emplace_back([&] {
+            std::string buf, out;
+            for (;;) {
+                const size_t i = nextFile.fetch_add(1, std::memory_order_relaxed);
+                if (i >= files.size()) { break; }
+
+                try {
+                    grepFile(files[i], expression.get(), buf, out);
+                }
+                catch (const std::exception& e) {
+                    std::lock_guard<std::mutex> lock(outputMutex);
+                    std::cerr << files[i].string() << ": " << e.what() << "\n";
+                }
+            }
+        });
+    }
+
+    for (auto& thread : threads) {
+        thread.join();
     }
 
     return 0;
