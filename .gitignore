@@ -1,6 +1,7 @@
 vcpkg_installed
 build/
 test.txt
-vcpkg.json
 .vscode/
 bin/
+b2/
+test-corpus-linux/

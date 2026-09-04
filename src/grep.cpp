@@ -10,6 +10,7 @@
 #include <vector>
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <string_view>
 
 constexpr std::array<std::string_view, 6> ignoredFolders{
@@ -47,6 +48,17 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression) {
         std::cerr << path.string() << ": Failed to open\n";
         return;
     }
+
+    char probe[8192];
+
+    file.read(probe, sizeof(probe));
+    
+    const std::streamsize got = file.gcount();
+
+    if (std::memchr(probe, '\0', static_cast<size_t>(got)) != nullptr) { return; }
+
+    file.clear();
+    file.seekg(0);
 
     std::unique_ptr<pcre2_match_data, decltype(&pcre2_match_data_free)> matchData(
         pcre2_match_data_create_from_pattern(expression, nullptr), pcre2_match_data_free);
