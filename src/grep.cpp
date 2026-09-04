@@ -20,6 +20,7 @@ constexpr std::array<std::string_view, 6> ignoredFolders{
     "dist",
     "obj",
     "__pycache__"
+    // also folders starting in .
 };
 
 using Pattern = std::unique_ptr<pcre2_code, decltype(&pcre2_code_free)>;
@@ -41,41 +42,57 @@ Pattern compileRegexPattern(char* pattern) {
     return Pattern(re, pcre2_code_free);
 }
 
-void grepFile(const std::filesystem::path& path, const pcre2_code* expression) {
-    std::ifstream file(path);
+void grepFile(const std::filesystem::path& path, const pcre2_code* expression, std::string& buf) {
+    std::ifstream file(path, std::ios::binary);
 
     if (!file.is_open()) {
         std::cerr << path.string() << ": Failed to open\n";
         return;
     }
 
-    char probe[8192];
+    file.seekg(0, std::ios::end);
+    const std::streamoff size = file.tellg();
+    file.seekg(0, std::ios::beg);
 
-    file.read(probe, sizeof(probe));
-    
-    const std::streamsize got = file.gcount();
+    if (size <= 0) { return; }
 
-    if (std::memchr(probe, '\0', static_cast<size_t>(got)) != nullptr) { return; }
+    buf.resize(static_cast<size_t>(size));
 
-    file.clear();
-    file.seekg(0);
+    const std::streamsize probe = size < 8192 ? size : 8192;
+    file.read(buf.data(), probe);
+    size_t got = static_cast<size_t>(file.gcount());
+
+    if (got == 0) { return; }
+    if (std::memchr(buf.data(), '\0', got) != nullptr) { return; }
+
+    if (static_cast<std::streamoff>(got) < size) {
+        file.read(buf.data() + got, size - static_cast<std::streamoff>(got));
+        got += static_cast<size_t>(file.gcount());
+    }
 
     std::unique_ptr<pcre2_match_data, decltype(&pcre2_match_data_free)> matchData(
         pcre2_match_data_create_from_pattern(expression, nullptr), pcre2_match_data_free);
 
-    std::vector<std::string> matches;
+    size_t pos = 0;
+    while (pos < got) {
+        const char* newline = static_cast<const char*>(std::memchr(buf.data() + pos, '\n', got - pos));
+        const size_t end = newline ? static_cast<size_t>(newline - buf.data()) : got;
 
-    std::string line;
-    while(std::getline(file, line)) {
-        int rc = pcre2_match(expression, reinterpret_cast<PCRE2_SPTR>(line.data()),
-                             line.size(), 0, 0, matchData.get(), nullptr);
+        size_t length = end - pos;
+        if (length > 0 && buf[pos + length - 1] == '\r') { --length; }
+
+        int rc = pcre2_match(expression, reinterpret_cast<PCRE2_SPTR>(buf.data() + pos),
+                             length, 0, 0, matchData.get(), nullptr);
 
         if (rc >= 0) {
-            std::cout << line << "\n";
+            std::cout.write(buf.data() + pos, static_cast<std::streamsize>(length));
+            std::cout.put('\n');
         }
         else if (rc != PCRE2_ERROR_NOMATCH) {
             throw std::runtime_error("Match error: " + std::to_string(rc));
         }
+
+        pos = end + 1;
     }
     return;
 }
@@ -85,9 +102,10 @@ int main(int argc, char* argv[]) {
     dir /= argv[1];
 
     Pattern expression = compileRegexPattern(argv[2]);
+    std::string buf;
 
     if (std::filesystem::is_regular_file(dir)) {
-        grepFile(dir, expression.get());
+        grepFile(dir, expression.get(), buf);
         return 0;
     }
 
@@ -105,7 +123,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (entry.is_regular_file()) {
-            grepFile(entry, expression.get());
+            grepFile(entry, expression.get(), buf);
         }
     }
 
