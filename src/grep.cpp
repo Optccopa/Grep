@@ -34,7 +34,7 @@ Pattern compileRegexPattern(char* pattern) {
     int errcode;
     PCRE2_SIZE erroffset;
     pcre2_code* re = pcre2_compile(reinterpret_cast<PCRE2_SPTR>(pattern),
-                                   PCRE2_ZERO_TERMINATED, 0, &errcode, &erroffset, nullptr);
+                                   PCRE2_ZERO_TERMINATED, PCRE2_MULTILINE, &errcode, &erroffset, nullptr);
 
     if (re == nullptr) {
         PCRE2_UCHAR msg[256];
@@ -77,31 +77,51 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression,
         got += static_cast<size_t>(file.gcount());
     }
 
+    if (std::memchr(buf.data(), '\r', got) != nullptr) {
+        size_t write = 0;
+        for (size_t read = 0; read < got; ++read) {
+            if (buf[read] == '\r' && read + 1 < got && buf[read + 1] == '\n') { continue; }
+            buf[write++] = buf[read];
+        }
+        got = write;
+    }
+
     std::unique_ptr<pcre2_match_data, decltype(&pcre2_match_data_free)> matchData(
         pcre2_match_data_create_from_pattern(expression, nullptr), pcre2_match_data_free);
 
     out.clear();
 
+    PCRE2_SIZE* ovector = pcre2_get_ovector_pointer(matchData.get());
+
     size_t pos = 0;
-    while (pos < got) {
-        const char* newline = static_cast<const char*>(std::memchr(buf.data() + pos, '\n', got - pos));
-        const size_t end = newline ? static_cast<size_t>(newline - buf.data()) : got;
+    while (pos <= got) {
+        int rc = pcre2_match(expression, reinterpret_cast<PCRE2_SPTR>(buf.data()),
+                             got, pos, 0, matchData.get(), nullptr);
 
-        size_t length = end - pos;
-        if (length > 0 && buf[pos + length - 1] == '\r') { --length; }
+        if (rc == PCRE2_ERROR_NOMATCH) { break; }
+        if (rc < 0) { throw std::runtime_error("Match error: " + std::to_string(rc)); }
 
-        int rc = pcre2_match(expression, reinterpret_cast<PCRE2_SPTR>(buf.data() + pos),
-                             length, 0, 0, matchData.get(), nullptr);
+        const size_t matchStart = static_cast<size_t>(ovector[0]);
+        const size_t matchEnd   = static_cast<size_t>(ovector[1]);
 
-        if (rc >= 0) {
-            out.append(buf.data() + pos, length);
+        const size_t previous  = matchStart ? buf.rfind('\n', matchStart - 1) : std::string::npos;
+        const size_t lineStart = (previous == std::string::npos) ? 0 : previous + 1;
+
+        const char* newline = static_cast<const char*>(std::memchr(buf.data() + lineStart, '\n', got - lineStart));
+        const size_t lineEnd = newline ? static_cast<size_t>(newline - buf.data()) : got;
+
+        bool matched = true;
+        if (matchEnd > lineEnd) {
+            matched = pcre2_match(expression, reinterpret_cast<PCRE2_SPTR>(buf.data() + lineStart),
+                                  lineEnd - lineStart, 0, 0, matchData.get(), nullptr) >= 0;
+        }
+
+        if (matched) {
+            out.append(buf.data() + lineStart, lineEnd - lineStart);
             out.push_back('\n');
         }
-        else if (rc != PCRE2_ERROR_NOMATCH) {
-            throw std::runtime_error("Match error: " + std::to_string(rc));
-        }
 
-        pos = end + 1;
+        pos = lineEnd + 1;
     }
 
     if (!out.empty()) {
