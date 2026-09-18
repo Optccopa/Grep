@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  ARTIFACTS: grep.exe
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          submodules: recursive
+
+      - run: >
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
+
+      - run: cmake --build build --config Release --parallel
+
+      - name: Collect, hash, upload
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          foreach ($name in $env:ARTIFACTS.Trim() -split '\s+') {
+            $f = @(Get-ChildItem build -Recurse -File -Filter $name |
+              Where-Object FullName -match '\\Release\\')
+            if ($f.Count -ne 1) { throw "Expected 1 $name, found $($f.Count)" }
+            Copy-Item $f[0] dist
+          }
+
+          $sums = Get-ChildItem dist | ForEach-Object {
+            "$((Get-FileHash $_).Hash.ToLower())  $($_.Name)"
+          }
+          $sums | Out-File -Encoding ascii dist/SHA256SUMS.txt
+
+          gh release upload $env:TAG (Get-ChildItem dist).FullName --clobber --repo $env:GITHUB_REPOSITORY
