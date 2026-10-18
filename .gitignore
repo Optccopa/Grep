@@ -1,7 +1,1 @@
-vcpkg_installed
 build/
-test.txt
-.vscode/
-bin/
-b2/
-test-corpus-linux/
