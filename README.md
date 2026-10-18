@@ -3,12 +3,38 @@
 A simple grep tool written in C++20, ~3x faster than GNU grep, ~1.5x faster than ripgrep in most cases.
 
 ## Install and Run
+### Prerequisites
+- Visual Studio 2022 or newer with the **Desktop development with C++ workload**
+- CMake 3.28+
+- git
+### Optional Prerequisites
+- [just](https://github.com/casey/just) - Way nicer commands (below)
+- Python 3.10+
+- For benchmarks:
+  - [ripgrep](https://github.com/BurntSushi/ripgrep) on your `PATH`.
+  - The two header folders the benchmarks search, at the paths set in `scripts/bench.py`: the MSVC 14.51 STL headers and the Windows SDK 10.0.26100.0 headers. If your versions differ, edit `SMALL` and `LARGE`.
+  - Git for Windows, the bundled grep 3.0 is used.
+
+### Clone source
 ```bash
 git clone https://github.com/Optccopa/Grep
 cd Grep
-cmake -B build
-cmake --build build --config Release
-./build/Release/grep.exe . "a"
+```
+
+### With just (reccomended, optional install)
+```bash
+just configure # Configure the build folder
+just build # Build the exe
+just test # Run tests
+just bench # Run benchmarks against rg and GNU grep
+```
+
+### With CMake
+```bash
+cmake -B build # Configure the build folder
+cmake --build build --config Release # Build the exe
+py ./tests/test_grep.py -q # Run tests
+py ./scripts/bench.py --fast # Run benchmarks against rg and GNU grep
 ```
 
 ## Benchmarks (Windows 11, Ryzen 7 5700G (8C/16T))
