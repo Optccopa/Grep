@@ -32,6 +32,8 @@ class FailedTest(Exception):
 def test_pattern_on_corpus(
     grep_exe: Path, corpus_path: Path, pattern: str, expected_lines: list
 ) -> None:
+    """Tests a pattern against test-corpus-old-grep and raises FailedTest if it
+    does not return the expected output"""
 
     res = subprocess.run(
         [grep_exe.absolute(), corpus_path.absolute(), pattern],
