@@ -31,10 +31,14 @@ jobs:
         with:
           submodules: recursive
 
-      - run: >
-          cmake -S . -B build -A x64
+      - name: Configure Build Folder
+        run: cmake -S . -B build -A x64
 
-      - run: cmake --build build --config Release
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: python tests/test_grep.py
 
       - name: Collect, hash, release
         run: |
