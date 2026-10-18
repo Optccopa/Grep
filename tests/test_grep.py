@@ -62,7 +62,7 @@ def test_pattern_on_corpus(
 
 
 def update_quiet():
-    text = f"Passed: {tracker.passed}, Failed: {tracker.failed}, In {time.time() - tracker.start:.2f}s"
+    text = f"{tracker.passed} Passed, {tracker.failed} Failed, In {time.time() - tracker.start:.2f}s"
     if tracker.failed > 0:
         print("\r", RED, text, RESET, end="")
     else:
