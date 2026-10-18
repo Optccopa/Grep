@@ -1,6 +1,6 @@
 # Grep
 
-A simple grep tool written in C++20, ~3x faster than GNU grep, ~2x faster than ripgrep on small folders, and almost matching on large folders.
+A simple grep tool written in C++20, ~3x faster than GNU grep, ~1.5x faster than ripgrep in most cases.
 
 ## Install and Run
 ```bash
@@ -20,9 +20,9 @@ Median of 20 warm-cache runs. All greps skip binary files. ([Bench Script](bench
 
 | Corpus | Search | this grep | ripgrep | GNU grep 3.0 |
 |---|---|---:|---:|---:|
-| Small | literal `constexpr` | **12 ms** | 22 ms | 71 ms |
-| Small | regex `_[A-Z]+_[A-Z]+[(]` | **12 ms** | 23 ms | 98 ms |
-| Small | no match `zqxjvk` | **11 ms** | 21 ms | 74 ms |
-| Large | literal `HRESULT` | 73 ms | **68 ms** | 765 ms |
-| Large | regex `_[A-Z]+_[A-Z]+[(]` | **74 ms** | 87 ms | 1319 ms |
-| Large | no match `zqxjvk` | 69 ms | **62 ms** | 935 ms |
+| Small | literal `constexpr` | **11 ms** | 22 ms | 71 ms |
+| Small | regex `_[A-Z]+_[A-Z]+[(]` | **11 ms** | 23 ms | 97 ms |
+| Small | no match `zqxjvk` | **10 ms** | 21 ms | 73 ms |
+| Large | literal `HRESULT` | **64 ms** | 68 ms | 760 ms |
+| Large | regex `_[A-Z]+_[A-Z]+[(]` | **70 ms** | 81 ms | 1336 ms |
+| Large | no match `zqxjvk` | **59 ms** | 63 ms | 948 ms |

@@ -19,7 +19,6 @@
 #include <string_view>
 #include <thread>
 #include <mutex>
-#include <atomic>
 
 constexpr std::array<std::string_view, 6> ignoredFolders{
     "node_modules",
@@ -32,6 +31,7 @@ constexpr std::array<std::string_view, 6> ignoredFolders{
 };
 
 std::mutex outputMutex;
+std::string_view literal;
 
 using Pattern = std::unique_ptr<pcre2_code, decltype(&pcre2_code_free)>;
 
@@ -113,14 +113,19 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression,
 
     size_t pos = 0;
     while (pos <= got) {
-        int rc = pcre2_match(expression, reinterpret_cast<PCRE2_SPTR>(buf.data()),
-                             got, pos, 0, matchData.get(), nullptr);
-
-        if (rc == PCRE2_ERROR_NOMATCH) { break; }
-        if (rc < 0) { throw std::runtime_error("Match error: " + std::to_string(rc)); }
-
-        const size_t matchStart = static_cast<size_t>(ovector[0]);
-        const size_t matchEnd   = static_cast<size_t>(ovector[1]);
+        size_t matchStart, matchEnd;
+        if (!literal.empty()) {
+            matchStart = std::string_view(buf.data(), got).find(literal, pos);
+            if (matchStart == std::string_view::npos) { break; }
+            matchEnd = matchStart + literal.size();
+        } else {
+            const int rc = pcre2_match(expression, reinterpret_cast<PCRE2_SPTR>(buf.data()),
+                                       got, pos, 0, matchData.get(), nullptr);
+            if (rc == PCRE2_ERROR_NOMATCH) { break; }
+            if (rc < 0) { throw std::runtime_error("Match error: " + std::to_string(rc)); }
+            matchStart = static_cast<size_t>(ovector[0]);
+            matchEnd   = static_cast<size_t>(ovector[1]);
+        }
 
         if (matchStart == got && got > 0 && buf[got - 1] == '\n') { break; }
 
@@ -152,9 +157,7 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression,
     return;
 }
 
-std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& dir) {
-    std::vector<std::filesystem::path> files;
-
+void collectFiles(const std::filesystem::path& dir, std::vector<std::filesystem::path>& files, std::mutex& filesMutex) {
     for (auto it = std::filesystem::recursive_directory_iterator(
             dir,
             std::filesystem::directory_options::skip_permission_denied
@@ -172,11 +175,10 @@ std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& dir
         }
 
         if (entry.is_regular_file()) {
+            std::lock_guard<std::mutex> lock(filesMutex);
             files.push_back(entry.path());
         }
     }
-
-    return files;
 }
 
 int main(int argc, char* argv[]) {
@@ -193,6 +195,7 @@ int main(int argc, char* argv[]) {
     dir /= argv[1];
 
     Pattern expression = compileRegexPattern(argv[2]);
+    if (!std::strpbrk(argv[2], "\\^$.|?*+()[]{}")) { literal = argv[2]; }
 
     if (std::filesystem::is_regular_file(dir)) {
         std::string buf, out;
@@ -200,12 +203,14 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    const std::vector<std::filesystem::path> files = collectFiles(dir);
+    std::vector<std::filesystem::path> files;
+    std::mutex filesMutex;
+    bool walked = false;
+    size_t nextFile = 0;
 
     unsigned threadCount = std::thread::hardware_concurrency();
     if (threadCount == 0) { threadCount = 4; }
 
-    std::atomic<size_t> nextFile{0};
     std::vector<std::thread> threads;
     threads.reserve(threadCount);
 
@@ -213,19 +218,27 @@ int main(int argc, char* argv[]) {
         threads.emplace_back([&] {
             std::string buf, out;
             for (;;) {
-                const size_t i = nextFile.fetch_add(1, std::memory_order_relaxed);
-                if (i >= files.size()) { break; }
+                std::filesystem::path path;
+                {
+                    std::lock_guard<std::mutex> lock(filesMutex);
+                    if (nextFile < files.size()) { path = files[nextFile++]; }
+                    else if (walked) { break; }
+                }
+                if (path.empty()) { std::this_thread::yield(); continue; }
 
                 try {
-                    grepFile(files[i], expression.get(), buf, out);
+                    grepFile(path, expression.get(), buf, out);
                 }
                 catch (const std::exception& e) {
                     std::lock_guard<std::mutex> lock(outputMutex);
-                    std::cerr << files[i].string() << ": " << e.what() << "\n";
+                    std::cerr << path.string() << ": " << e.what() << "\n";
                 }
             }
         });
     }
+
+    collectFiles(dir, files, filesMutex);
+    { std::lock_guard<std::mutex> lock(filesMutex); walked = true; }
 
     for (auto& thread : threads) {
         thread.join();

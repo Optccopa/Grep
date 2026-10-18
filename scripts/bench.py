@@ -78,7 +78,7 @@ for size, path, kind, pat in CASES:
         print(f"{size} {kind} {name}: {res[name]:.0f} ms, {lines} lines", flush=True)
     rows.append((size, kind, pat, res))
 
-names = ["this grep", "ripgrep", "GNU grep"]
+names = ["this grep", "ripgrep", "GNU grep 3.0"]
 print("\n| Corpus | Search | " + " | ".join(names) + " |")
 print("|---|---|" + "---:|" * len(names))
 for size, kind, pat, res in rows:
