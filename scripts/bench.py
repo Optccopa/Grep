@@ -10,18 +10,7 @@ MINE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "build", "Release", "grep.exe"
 )
 RG = "rg"
-# prefer MSYS2's native GNU grep, fall back to the older one bundled with Git
-GNU = next(
-    (
-        p
-        for p in (
-            r"C:\msys64\ucrt64\bin\grep.exe",
-            r"C:\Program Files\Git\usr\bin\grep.exe",
-        )
-        if os.path.isfile(p)
-    ),
-    None,
-)
+GNU = r"C:\Program Files\Git\usr\bin\grep.exe"
 SMALL = r"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\include"
 LARGE = r"C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0"
 
@@ -40,13 +29,15 @@ RUNS = 1 if "--fast" in sys.argv else 20
 for d in (SMALL, LARGE):
     if not os.path.isdir(d):
         sys.exit(f"Directory not found: {d}")
-if not GNU:
-    sys.exit("GNU grep not found (install MSYS2 or Git for Windows)")
-print(
-    subprocess.run(
+if not os.path.isfile(GNU):
+    sys.exit("GNU grep not found (install Git for Windows)")
+GNU_NAME = (
+    "GNU grep "
+    + subprocess.run(
         [GNU, "--version"], capture_output=True, text=True, check=False
-    ).stdout.splitlines()[0]
+    ).stdout.split()[3]
 )
+print(GNU_NAME)
 
 
 # same output for all: matching lines only, no filename/line number, skip binary
@@ -54,7 +45,7 @@ def cmds(path, pat):
     return {
         "this grep": [MINE, path, pat],
         "ripgrep": [RG, "-IN", "--no-heading", pat, path],
-        "GNU grep": [GNU, "-rhIE", pat, path],
+        GNU_NAME: [GNU, "-rhIE", pat, path],
     }
 
 
@@ -78,7 +69,7 @@ for size, path, kind, pat in CASES:
         print(f"{size} {kind} {name}: {res[name]:.0f} ms, {lines} lines", flush=True)
     rows.append((size, kind, pat, res))
 
-names = ["this grep", "ripgrep", "GNU grep 3.0"]
+names = ["this grep", "ripgrep", GNU_NAME]
 print("\n| Corpus | Search | " + " | ".join(names) + " |")
 print("|---|---|" + "---:|" * len(names))
 for size, kind, pat, res in rows:

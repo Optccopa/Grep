@@ -20,9 +20,9 @@ Median of 20 warm-cache runs. All greps skip binary files. ([Bench Script](bench
 
 | Corpus | Search | this grep | ripgrep | GNU grep 3.0 |
 |---|---|---:|---:|---:|
-| Small | literal `constexpr` | **11 ms** | 22 ms | 71 ms |
-| Small | regex `_[A-Z]+_[A-Z]+[(]` | **11 ms** | 23 ms | 97 ms |
-| Small | no match `zqxjvk` | **10 ms** | 21 ms | 73 ms |
-| Large | literal `HRESULT` | **64 ms** | 68 ms | 760 ms |
-| Large | regex `_[A-Z]+_[A-Z]+[(]` | **70 ms** | 81 ms | 1336 ms |
-| Large | no match `zqxjvk` | **59 ms** | 63 ms | 948 ms |
+| Small | literal `constexpr` | **12 ms** | 24 ms | 69 ms |
+| Small | regex `_[A-Z]+_[A-Z]+[(]` | **11 ms** | 23 ms | 100 ms |
+| Small | no match `zqxjvk` | **11 ms** | 22 ms | 78 ms |
+| Large | literal `HRESULT` | 74 ms | **72 ms** | 774 ms |
+| Large | regex `_[A-Z]+_[A-Z]+[(]` | **66 ms** | 81 ms | 1320 ms |
+| Large | no match `zqxjvk` | **58 ms** | 63 ms | 931 ms |
