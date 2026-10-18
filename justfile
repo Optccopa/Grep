@@ -11,3 +11,6 @@ run config="Release":
     @clear
     cmake --build build --config {{config}}
     powershell -Command "./build/{{config}}/grep.exe . conf"
+
+test:
+    @powershell -Command "py ./tests/test_grep.py -q"

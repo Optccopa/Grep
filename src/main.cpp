@@ -31,6 +31,15 @@ std::mutex outputMutex;
 using Pattern = std::unique_ptr<pcre2_code, decltype(&pcre2_code_free)>;
 
 Pattern compileRegexPattern(char* pattern) {
+    // the whole file is one subject, so these would anchor to the file, not the line
+    for (const char* c = pattern; *c && c[1]; ++c) {
+        if (*c != '\\') { continue; }
+        if (std::strchr("AzZG", c[1])) {
+            throw std::runtime_error("Unsupported anchor \\" + std::string(1, c[1]) + ", use ^ and $");
+        }
+        ++c;
+    }
+
     int errcode;
     PCRE2_SIZE erroffset;
     pcre2_code* re = pcre2_compile(reinterpret_cast<PCRE2_SPTR>(pattern),
@@ -103,6 +112,8 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression,
 
         const size_t matchStart = static_cast<size_t>(ovector[0]);
         const size_t matchEnd   = static_cast<size_t>(ovector[1]);
+
+        if (matchStart == got && got > 0 && buf[got - 1] == '\n') { break; }
 
         const size_t previous  = matchStart ? buf.rfind('\n', matchStart - 1) : std::string::npos;
         const size_t lineStart = (previous == std::string::npos) ? 0 : previous + 1;
