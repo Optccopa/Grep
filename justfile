@@ -19,7 +19,7 @@ testv:
     @powershell -Command "py ./tests/test_grep.py"
 
 bench:
-    @powershell -Command "py ./bench.py --fast"
+    @powershell -Command "py ./scripts/bench.py --fast"
 
 benchv:
-    @powershell -Command "py ./bench.py"
+    @powershell -Command "py ./scripts/bench.py"

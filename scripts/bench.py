@@ -11,8 +11,17 @@ MINE = os.path.join(
 )
 RG = "rg"
 # prefer MSYS2's native GNU grep, fall back to the older one bundled with Git
-GNU = next((p for p in (r"C:\msys64\ucrt64\bin\grep.exe", r"C:\Program Files\Git\usr\bin\grep.exe")
-            if os.path.isfile(p)), None)
+GNU = next(
+    (
+        p
+        for p in (
+            r"C:\msys64\ucrt64\bin\grep.exe",
+            r"C:\Program Files\Git\usr\bin\grep.exe",
+        )
+        if os.path.isfile(p)
+    ),
+    None,
+)
 SMALL = r"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\include"
 LARGE = r"C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0"
 
@@ -33,7 +42,11 @@ for d in (SMALL, LARGE):
         sys.exit(f"Directory not found: {d}")
 if not GNU:
     sys.exit("GNU grep not found (install MSYS2 or Git for Windows)")
-print(subprocess.run([GNU, "--version"], capture_output=True, text=True, check=False).stdout.splitlines()[0])
+print(
+    subprocess.run(
+        [GNU, "--version"], capture_output=True, text=True, check=False
+    ).stdout.splitlines()[0]
+)
 
 
 # same output for all: matching lines only, no filename/line number, skip binary
@@ -47,7 +60,9 @@ def cmds(path, pat):
 
 def timed(cmd):
     t = time.perf_counter()
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    subprocess.run(
+        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False
+    )
     return (time.perf_counter() - t) * 1000
 
 
@@ -56,7 +71,9 @@ for size, path, kind, pat in CASES:
     res = {}
     for name, cmd in cmds(path, pat).items():
         # exit code 1 = no match, so no check; this run also warms the file cache
-        lines = subprocess.run(cmd, capture_output=True, check=False).stdout.count(b"\n")
+        lines = subprocess.run(cmd, capture_output=True, check=False).stdout.count(
+            b"\n"
+        )
         res[name] = statistics.median(timed(cmd) for _ in range(RUNS))
         print(f"{size} {kind} {name}: {res[name]:.0f} ms, {lines} lines", flush=True)
     rows.append((size, kind, pat, res))
