@@ -49,12 +49,12 @@ Flag sets: none, -i, -S, -F, -w, -x, -v, [-i, -w], [-i, -F], [-i, -v]
 
 | Corpus | Search | this grep | ripgrep | GNU grep 3.0 |
 |---|---|---:|---:|---:|
-| Small | literal `constexpr` | **11 ms** | 22 ms | 69 ms |
-| Small | regex `_[A-Z]+_[A-Z]+[(]` | **11 ms** | 23 ms | 103 ms |
-| Small | no match `zqxjvk` | **11 ms** | 22 ms | 73 ms |
-| Large | literal `HRESULT` | **69 ms** | 77 ms | 773 ms |
-| Large | regex `_[A-Z]+_[A-Z]+[(]` | **72 ms** | 98 ms | 1823 ms |
-| Large | no match `zqxjvk` | **66 ms** | 72 ms | 925 ms |
+| Small | literal `constexpr` | **13 ms** | 26 ms | 148 ms |
+| Small | regex `_[A-Z]+_[A-Z]+[(]` | **14 ms** | 27 ms | 150 ms |
+| Small | no match `zqxjvk` | **13 ms** | 25 ms | 149 ms |
+| Large | literal `HRESULT` | **114 ms** | 135 ms | 1633 ms |
+| Large | regex `_[A-Z]+_[A-Z]+[(]` | **118 ms** | 154 ms | 1872 ms |
+| Large | no match `zqxjvk` | **111 ms** | 129 ms | 1747 ms |
 
 ## Usage
 ```text
