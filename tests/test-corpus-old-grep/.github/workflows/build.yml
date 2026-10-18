@@ -1,0 +1,62 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ARTIFACTS: grep.exe
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - run: >
+          cmake -S . -B build -A x64
+
+      - run: cmake --build build --config Release
+
+      - name: Collect, hash, release
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          foreach ($name in $env:ARTIFACTS.Trim() -split '\s+') {
+            $f = @(Get-ChildItem build -Recurse -File -Filter $name |
+              Where-Object FullName -match '\\Release\\')
+            if ($f.Count -ne 1) { throw "Expected 1 $name, found $($f.Count)" }
+            Copy-Item $f[0] dist
+          }
+
+          $sums = Get-ChildItem dist | ForEach-Object {
+            "$((Get-FileHash $_).Hash.ToLower())  $($_.Name)"
+          }
+          $sums | Out-File -Encoding ascii dist/SHA256SUMS.txt
+
+          $tag = "build-$env:GITHUB_RUN_NUMBER"
+          $sha = $env:GITHUB_SHA.Substring(0, 7)
+
+          gh release create $tag (Get-ChildItem dist).FullName `
+            --target $env:GITHUB_SHA `
+            --title "Build $env:GITHUB_RUN_NUMBER ($sha)" `
+            --generate-notes `
+            --repo $env:GITHUB_REPOSITORY
