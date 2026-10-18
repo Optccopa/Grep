@@ -14,3 +14,12 @@ run config="Release":
 
 test:
     @powershell -Command "py ./tests/test_grep.py -q"
+
+testv:
+    @powershell -Command "py ./tests/test_grep.py"
+
+bench:
+    @powershell -Command "py ./bench.py --fast"
+
+benchv:
+    @powershell -Command "py ./bench.py"

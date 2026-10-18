@@ -33,6 +33,17 @@ using Pattern = std::unique_ptr<pcre2_code, decltype(&pcre2_code_free)>;
 Pattern compileRegexPattern(char* pattern) {
     // the whole file is one subject, so these would anchor to the file, not the line
     for (const char* c = pattern; *c && c[1]; ++c) {
+        // (?-m) and (?^) would make ^ and $ match the file's ends instead of each line's
+        if (c[0] == '(' && c[1] == '?') {
+            const char* flags = c + 2;
+            const size_t len = std::strcspn(flags, ":)");
+            const std::string_view group(flags, len);
+            const size_t off = group.find_first_of("-^");
+            const bool isFlagGroup = group.find_first_not_of("imnsxJU-^") == std::string_view::npos;
+            if (isFlagGroup && off != std::string_view::npos && (group[off] == '^' || group.find('m', off) != std::string_view::npos)) {
+                throw std::runtime_error("Unsupported flag (?-m), ^ and $ always match per line");
+            }
+        }
         if (*c != '\\') { continue; }
         if (std::strchr("AzZG", c[1])) {
             throw std::runtime_error("Unsupported anchor \\" + std::string(1, c[1]) + ", use ^ and $");
