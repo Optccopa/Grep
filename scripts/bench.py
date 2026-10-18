@@ -7,7 +7,7 @@ import sys
 import time
 
 MINE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "build", "Release", "grep.exe"
+    os.path.dirname(os.path.abspath(__file__)), "..", "build", "Release", "grep.exe"
 )
 RG = "rg"
 # prefer MSYS2's native GNU grep, fall back to the older one bundled with Git

@@ -4,6 +4,9 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
+#include <fcntl.h>
+#include <io.h>
+
 #include <iostream>
 #include <filesystem>
 #include <memory>
@@ -152,7 +155,10 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression,
 std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& dir) {
     std::vector<std::filesystem::path> files;
 
-    for (auto it = std::filesystem::recursive_directory_iterator(dir, std::filesystem::directory_options::skip_permission_denied);
+    for (auto it = std::filesystem::recursive_directory_iterator(
+            dir,
+            std::filesystem::directory_options::skip_permission_denied
+        );
         it != std::filesystem::recursive_directory_iterator(); ++it) {
 
         const auto& entry = *it;
@@ -174,6 +180,10 @@ std::vector<std::filesystem::path> collectFiles(const std::filesystem::path& dir
 }
 
 int main(int argc, char* argv[]) {
+    // in text mode, the C runtime converts every \n to \r\n byte by byte.
+    // That happens while the output mutex is held, so all 16 threads queue up behind it
+    _setmode(_fileno(stdout), _O_BINARY);
+
     if (argc < 3) {
         std::cerr << "usage: grep <path> <pattern>\n";
         return 2;
