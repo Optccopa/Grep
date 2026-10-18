@@ -1,6 +1,6 @@
 # Grep
 
-A simple grep tool written in C++20, ~3x faster than GNU grep and matches ripgrep on small folders.
+A simple grep tool written in C++20, ~3x faster than GNU grep, ~2x faster than ripgrep on small folders, and almost matching on large folders.
 
 ## Install and Run
 ```bash
