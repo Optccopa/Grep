@@ -1,9 +1,11 @@
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
 #include <iostream>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 
 #include <string>
@@ -53,8 +55,11 @@ Pattern compileRegexPattern(char* pattern) {
 
     int errcode;
     PCRE2_SIZE erroffset;
+    pcre2_compile_context* context = pcre2_compile_context_create(nullptr);
+    pcre2_set_newline(context, PCRE2_NEWLINE_ANYCRLF);
     pcre2_code* re = pcre2_compile(reinterpret_cast<PCRE2_SPTR>(pattern),
-                                   PCRE2_ZERO_TERMINATED, PCRE2_MULTILINE, &errcode, &erroffset, nullptr);
+                                   PCRE2_ZERO_TERMINATED, PCRE2_MULTILINE, &errcode, &erroffset, context);
+    pcre2_compile_context_free(context);
 
     if (re == nullptr) {
         PCRE2_UCHAR msg[256];
@@ -69,42 +74,32 @@ Pattern compileRegexPattern(char* pattern) {
 
 void grepFile(const std::filesystem::path& path, const pcre2_code* expression,
               std::string& buf, std::string& out) {
-    std::ifstream file(path, std::ios::binary);
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
-    if (!file.is_open()) {
+    if (file == INVALID_HANDLE_VALUE) {
         std::lock_guard<std::mutex> lock(outputMutex);
         std::cerr << path.string() << ": Failed to open\n";
         return;
     }
 
-    file.seekg(0, std::ios::end);
-    const std::streamoff size = file.tellg();
-    file.seekg(0, std::ios::beg);
+    LARGE_INTEGER fileSize;
+    if (!GetFileSizeEx(file, &fileSize) || fileSize.QuadPart <= 0) { CloseHandle(file); return; }
+    const size_t size = static_cast<size_t>(fileSize.QuadPart);
 
-    if (size <= 0) { return; }
+    buf.resize(size);
 
-    buf.resize(static_cast<size_t>(size));
+    DWORD bytesRead = 0;
+    ReadFile(file, buf.data(), static_cast<DWORD>(size < 8192 ? size : 8192), &bytesRead, nullptr);
+    size_t got = bytesRead;
 
-    const std::streamsize probe = size < 8192 ? size : 8192;
-    file.read(buf.data(), probe);
-    size_t got = static_cast<size_t>(file.gcount());
+    if (got == 0 || std::memchr(buf.data(), '\0', got) != nullptr) { CloseHandle(file); return; }
 
-    if (got == 0) { return; }
-    if (std::memchr(buf.data(), '\0', got) != nullptr) { return; }
-
-    if (static_cast<std::streamoff>(got) < size) {
-        file.read(buf.data() + got, size - static_cast<std::streamoff>(got));
-        got += static_cast<size_t>(file.gcount());
+    if (got < size) {
+        ReadFile(file, buf.data() + got, static_cast<DWORD>(size - got), &bytesRead, nullptr);
+        got += bytesRead;
     }
-
-    if (std::memchr(buf.data(), '\r', got) != nullptr) {
-        size_t write = 0;
-        for (size_t read = 0; read < got; ++read) {
-            if (buf[read] == '\r' && read + 1 < got && buf[read + 1] == '\n') { continue; }
-            buf[write++] = buf[read];
-        }
-        got = write;
-    }
+    CloseHandle(file);
 
     std::unique_ptr<pcre2_match_data, decltype(&pcre2_match_data_free)> matchData(
         pcre2_match_data_create_from_pattern(expression, nullptr), pcre2_match_data_free);
@@ -131,15 +126,16 @@ void grepFile(const std::filesystem::path& path, const pcre2_code* expression,
 
         const char* newline = static_cast<const char*>(std::memchr(buf.data() + lineStart, '\n', got - lineStart));
         const size_t lineEnd = newline ? static_cast<size_t>(newline - buf.data()) : got;
+        const size_t trimmed = (lineEnd > lineStart && buf[lineEnd - 1] == '\r') ? lineEnd - 1 : lineEnd;
 
         bool matched = true;
-        if (matchEnd > lineEnd) {
+        if (matchEnd > trimmed) {
             matched = pcre2_match(expression, reinterpret_cast<PCRE2_SPTR>(buf.data() + lineStart),
-                                  lineEnd - lineStart, 0, 0, matchData.get(), nullptr) >= 0;
+                                  trimmed - lineStart, 0, 0, matchData.get(), nullptr) >= 0;
         }
 
         if (matched) {
-            out.append(buf.data() + lineStart, lineEnd - lineStart);
+            out.append(buf.data() + lineStart, trimmed - lineStart);
             out.push_back('\n');
         }
 
