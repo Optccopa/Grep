@@ -1,7 +1,75 @@
 class TestCase:
-    def __init__(self, pattern: str, expected_lines: list[str]):
+    def __init__(
+        self,
+        pattern: str,
+        expected_lines: list[str],
+        flags: list[str] | None = None,
+        corpus: str | None = None,
+        any_order: bool = False,
+    ):
         self.pattern = pattern
         self.expected_lines = expected_lines
+        # passed before the path, e.g. ["-i"] or ["-w", "--"] for patterns starting with -
+        self.flags = flags or []
+        # None = test-corpus-old-grep, otherwise a path inside the generated FIXTURE
+        self.corpus = corpus
+        # output order between files varies run to run
+        self.any_order = any_order
+
+
+# Written to a temp folder at test time, since a committed .gitignore would hide its own test files from git
+FIXTURE: dict[str, bytes] = {
+    "words.txt": b"needle\nNeedle in caps\nneedles plural\na needle here\nbig NEEDLE\n"
+    b"haystack\na.b literal dot\naXb other\n-dash start\nback\\Eslash\n",
+    "tree/.gitignore": b"*.log\n!keep.log\nbuild/\n/rootonly.txt\ndocs/**/draft.md\n",
+    "tree/a.txt": b"needle a.txt\n",
+    "tree/app.log": b"needle app.log\n",
+    "tree/keep.log": b"needle keep.log\n",
+    "tree/rootonly.txt": b"needle rootonly.txt\n",
+    "tree/data.json": b"needle data.json\n",
+    "tree/bin.dat": b"needle bin.dat\n\x00\x01\n",
+    "tree/.hidden.txt": b"needle .hidden.txt\n",
+    "tree/.secret/s.txt": b"needle .secret/s.txt\n",
+    "tree/build/out.txt": b"needle build/out.txt\n",
+    "tree/docs/readme.md": b"needle docs/readme.md\n",
+    "tree/docs/a/b/draft.md": b"needle docs/a/b/draft.md\n",
+    "tree/src/.ignore": b"generated/\n",
+    "tree/src/main.cpp": b"needle src/main.cpp\n",
+    "tree/src/util.h": b"needle src/util.h\n",
+    "tree/src/rootonly.txt": b"needle src/rootonly.txt\n",
+    "tree/src/generated/gen.cpp": b"needle src/generated/gen.cpp\n",
+    "tree/src/ünï.txt": "needle src/ünï.txt\n".encode(),
+}
+
+TREE_DEFAULT = [
+    "needle a.txt",
+    "needle keep.log",
+    "needle data.json",
+    "needle docs/readme.md",
+    "needle src/main.cpp",
+    "needle src/util.h",
+    "needle src/rootonly.txt",
+    "needle src/ünï.txt",
+]
+TREE_IGNORED = [
+    "needle app.log",
+    "needle rootonly.txt",
+    "needle build/out.txt",
+    "needle docs/a/b/draft.md",
+    "needle src/generated/gen.cpp",
+]
+TREE_HIDDEN = ["needle .hidden.txt", "needle .secret/s.txt"]
+TREE_BINARY = ["needle bin.dat"]
+
+
+def tree(pattern: str, expected: list[str], flags: list[str] | None = None) -> TestCase:
+    return TestCase(pattern, expected, flags, corpus="tree", any_order=True)
+
+
+def words(
+    pattern: str, expected: list[str], flags: list[str] | None = None
+) -> TestCase:
+    return TestCase(pattern, expected, flags, corpus="words.txt")
 
 
 # Extend tests here
@@ -839,6 +907,7 @@ cases: list[TestCase] = [
     TestCase(
         "^build/$",
         ["build/"],
+        flags=["--hidden"],
     ),
     TestCase(
         '^(build|run) config=\\"\\w+\\":$',
@@ -1083,5 +1152,78 @@ cases: list[TestCase] = [
     TestCase(
         "[0-9]+ \\* \\d+|\\d+ \\*",
         [],
+    ),
+    # matching flags
+    words("needle", ["needle", "needles plural", "a needle here"]),
+    words(
+        "needle",
+        ["needle", "Needle in caps", "needles plural", "a needle here", "big NEEDLE"],
+        ["-i"],
+    ),
+    words(
+        "needle",
+        ["needle", "Needle in caps", "needles plural", "a needle here", "big NEEDLE"],
+        ["-S"],
+    ),
+    words("Needle", ["Needle in caps"], ["-S"]),
+    words("\\Dneedle", ["a needle here", "big NEEDLE"], ["-S"]),
+    words("Needle", ["Needle in caps"], ["-S", "-F"]),
+    words("a.b", ["a.b literal dot", "aXb other"]),
+    words("a.b", ["a.b literal dot"], ["-F"]),
+    words("back\\Eslash", ["back\\Eslash"], ["-F"]),
+    words("a.b", [], ["-Fx"]),
+    words("needle", ["needle", "a needle here"], ["-w"]),
+    words(
+        "needle", ["needle", "Needle in caps", "a needle here", "big NEEDLE"], ["-iw"]
+    ),
+    words("-dash", ["-dash start"], ["-w", "--"]),
+    words("needle", ["needle"], ["-x"]),
+    words("NEEDLE", ["needle"], ["-ix"]),
+    words("e", ["big NEEDLE", "haystack", "-dash start", "back\\Eslash"], ["-v"]),
+    words("e", ["haystack", "-dash start"], ["-vi"]),
+    words(
+        "needle",
+        [
+            "Needle in caps",
+            "needles plural",
+            "big NEEDLE",
+            "haystack",
+            "a.b literal dot",
+            "aXb other",
+            "-dash start",
+            "back\\Eslash",
+        ],
+        ["-vw"],
+    ),
+    # file selection
+    tree("needle", TREE_DEFAULT),
+    tree("needle", TREE_DEFAULT + TREE_HIDDEN, ["--hidden"]),
+    tree("needle", TREE_DEFAULT + TREE_BINARY, ["-a"]),
+    tree("needle", TREE_DEFAULT + TREE_IGNORED, ["-u"]),
+    tree("needle", TREE_DEFAULT + TREE_IGNORED + TREE_HIDDEN, ["-uu"]),
+    tree("needle", TREE_DEFAULT + TREE_IGNORED + TREE_HIDDEN + TREE_BINARY, ["-uuu"]),
+    tree("needle", ["needle src/main.cpp"], ["-g", "*.cpp"]),
+    tree(
+        "needle",
+        [line for line in TREE_DEFAULT if not line.endswith(".txt")],
+        ["-g", "!*.txt"],
+    ),
+    tree(
+        "needle",
+        [line for line in TREE_DEFAULT if line.startswith("needle src/")],
+        ["-g", "src/*"],
+    ),
+    tree("needle", ["needle docs/readme.md"], ["-g**/*.md"]),
+    tree("needle", ["needle app.log", "needle keep.log"], ["-u", "-g", "*.log"]),
+    tree("needle", ["needle src/main.cpp", "needle src/util.h"], ["-t", "cpp"]),
+    tree(
+        "needle",
+        [line for line in TREE_DEFAULT if not line.endswith((".cpp", ".h"))],
+        ["-T", "cpp"],
+    ),
+    tree(
+        "needle",
+        ["needle data.json", "needle docs/readme.md"],
+        ["-t", "json", "-t", "md"],
     ),
 ]

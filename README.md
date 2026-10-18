@@ -13,16 +13,36 @@ cmake --build build --config Release
 
 ## Benchmarks (Windows 11, Ryzen 7 5700G (8C/16T))
 
-Median of 20 warm-cache runs. All greps skip binary files. ([Bench Script](bench.py))
+Median of 20 warm-cache runs. All greps skip binary files.
 
+Each value is a mean over 10 flag sets of the median of 10 runs.
+
+Flag sets: none, -i, -S, -F, -w, -x, -v, [-i, -w], [-i, -F], [-i, -v]
 - **Small:** MSVC STL headers, 353 files, 15 MB
 - **Large:** Windows SDK 10.0.26100.0 headers, 4,771 files, 345 MB
 
 | Corpus | Search | this grep | ripgrep | GNU grep 3.0 |
 |---|---|---:|---:|---:|
-| Small | literal `constexpr` | **12 ms** | 24 ms | 69 ms |
-| Small | regex `_[A-Z]+_[A-Z]+[(]` | **11 ms** | 23 ms | 100 ms |
-| Small | no match `zqxjvk` | **11 ms** | 22 ms | 78 ms |
-| Large | literal `HRESULT` | 74 ms | **72 ms** | 774 ms |
-| Large | regex `_[A-Z]+_[A-Z]+[(]` | **66 ms** | 81 ms | 1320 ms |
-| Large | no match `zqxjvk` | **58 ms** | 63 ms | 931 ms |
+| Small | literal `constexpr` | **11 ms** | 22 ms | 69 ms |
+| Small | regex `_[A-Z]+_[A-Z]+[(]` | **11 ms** | 23 ms | 103 ms |
+| Small | no match `zqxjvk` | **11 ms** | 22 ms | 73 ms |
+| Large | literal `HRESULT` | **69 ms** | 77 ms | 773 ms |
+| Large | regex `_[A-Z]+_[A-Z]+[(]` | **72 ms** | 98 ms | 1823 ms |
+| Large | no match `zqxjvk` | **66 ms** | 72 ms | 925 ms |
+
+## Usage
+```text
+usage: grep [flags] <path> <pattern>
+  -i         ignore case
+  -S         smart case: ignore case unless the pattern has an uppercase letter
+  -F         treat the pattern as a fixed string
+  -w         match whole words only
+  -x         match whole lines only
+  -v         print lines that do not match
+  -a         search binary files as text
+  -g GLOB    only search files matching GLOB, !GLOB excludes (repeatable)
+  -t TYPE    only search files of TYPE, -T TYPE excludes them (repeatable)
+  --hidden   search hidden files and folders
+  -u         don't respect .gitignore/.ignore, -uu also --hidden, -uuu also -a
+  --         end of flags
+```
